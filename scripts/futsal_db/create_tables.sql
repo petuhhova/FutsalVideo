@@ -1,5 +1,5 @@
 DROP TABLE IF EXISTS country,competition,sources,season,competition_in_season,
-competition_params,stage,round_stage_params,play_off_stage_params,
+competition_params,stage,round_stage_params,playoff_stage_params,
 group_stage_params,group_in_stage,teams_in_group,teams_in_competition,
 tour,matches,score,video_content,special_penalties,team,stadium;
 
@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS sources(
 	results_source varchar(256),
 	translations_source varchar(256),
 	highlights_source varchar (256),
+    source_competition_id smallint,
 	
 	CONSTRAINT pk_sources PRIMARY KEY (competition_id),
 	CONSTRAINT fk_competition_sources FOREIGN KEY (competition_id) REFERENCES competition
@@ -106,7 +107,7 @@ CREATE TABLE IF NOT EXISTS stage(
 	competition_in_season_id smallint NOT NULL,
 
 	CONSTRAINT check_stage_stage_number CHECK (stage_number>0),
-	CONSTRAINT check_stage_stage_type CHECK (stage_type IN ('round','play-off','group')),
+	CONSTRAINT check_stage_stage_type CHECK (stage_type IN ('round','playoff','group')),
 	CONSTRAINT unique_stage_stage_number_competition_in_season_id UNIQUE (stage_number,competition_in_season_id),
 	
 	CONSTRAINT pk_stage PRIMARY KEY (stage_id),
@@ -123,16 +124,16 @@ CREATE TABLE IF NOT EXISTS round_stage_params(
 	CONSTRAINT fk_round_stage_params_stage FOREIGN KEY (stage_id) REFERENCES stage
 );
 
-CREATE TABLE IF NOT EXISTS play_off_stage_params(
+CREATE TABLE IF NOT EXISTS playoff_stage_params(
 	stage_id smallint,
 	rounds_count smallint NOT NULL,
 	is_third_place_matches bool NOT NULL DEFAULT false,
 	is_all_places_matches bool NOT NULL DEFAULT false,
 
-	CONSTRAINT check_play_off_stage_params_rounds_count CHECK (rounds_count>0),
+	CONSTRAINT check_playoff_stage_params_rounds_count CHECK (rounds_count>0),
 	
-	CONSTRAINT pk_play_off_stage_params PRIMARY KEY (stage_id),
-	CONSTRAINT fk_play_off_stage_params_stage FOREIGN KEY (stage_id) REFERENCES stage
+	CONSTRAINT pk_playoff_stage_params PRIMARY KEY (stage_id),
+	CONSTRAINT fk_playoff_stage_params_stage FOREIGN KEY (stage_id) REFERENCES stage
 );
 
 CREATE TABLE IF NOT EXISTS group_stage_params(
@@ -230,81 +231,3 @@ CREATE TABLE IF NOT EXISTS matches(
 	CONSTRAINT fk_mathches_stadium FOREIGN KEY (stadium_id) REFERENCES stadium,
 	CONSTRAINT fk_mathches_group_in_stage FOREIGN KEY (group_in_stage_id) REFERENCES group_in_stage
 );
-
-DROP FUNCTION IF EXISTS check_stage_type;
-
-CREATE FUNCTION check_stage_type(_stage_id smallint, _stage_type varchar(32)) RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN
-    EXISTS(
-      SELECT stage_type FROM stage 
-      WHERE stage_id = _stage_id
-      AND stage_type = _stage_type
-      );
-END
-$$ LANGUAGE PLPGSQL;
-
-ALTER TABLE ONLY round_stage_params
-	ADD CONSTRAINT check_round_stage_params_stage_id CHECK (check_stage_type(stage_id,'round'));
-
-ALTER TABLE ONLY play_off_stage_params
-	ADD CONSTRAINT check_play_off_stage_params_stage_id CHECK (check_stage_type(stage_id,'play-off'));
-
-ALTER TABLE ONLY group_stage_params
-	ADD CONSTRAINT check_group_stage_params_stage_id CHECK (check_stage_type(stage_id,'group'));
-
-ALTER TABLE ONLY group_in_stage
-	ADD CONSTRAINT check_group_in_stage_stage_id CHECK (check_stage_type(stage_id,'group'));
-
-DROP FUNCTION IF EXISTS	check_group_in_match,check_teams_in_match;
-
-CREATE FUNCTION check_group_in_match(_tour_id int,_group_in_stage_id smallint) RETURNS BOOLEAN AS $$
-DECLARE
-	curr_stage_id smallint;
-BEGIN
-  SELECT stage_id FROM tour
-  WHERE tour_id=_tour_id
-  INTO curr_stage_id;
-  
-  IF check_stage_type(curr_stage_id,'group') THEN
-  RETURN
-	EXISTS(
-	SELECT * FROM group_in_stage
-    WHERE stage_id = curr_stage_id
-	AND group_in_stage_id = _group_in_stage_id);
-  END IF;
-  RETURN _group_in_stage_id IS NULL;
-END
-$$ LANGUAGE PLPGSQL;
-
-CREATE FUNCTION check_teams_in_match(_team1_id smallint,_team2_id smallint,_tour_id int,_group_in_stage_id smallint) RETURNS BOOLEAN AS $$
-DECLARE
-	curr_comp smallint;
-	count_teams smallint;
-BEGIN
-	SELECT competition_in_season_id FROM tour
-	JOIN stage ON stage_id
-    WHERE tour_id = _tour_id
-	INTO curr_comp;
-
-	IF _group_in_stage_id IS NULL THEN
-		SELECT COUNT(*) FROM teams_in_competition
-		WHERE competition_in_season=curr_comp
-		AND team_id=_team1_id OR team_id=_team2_id
-		INTO count_teams;
-	ELSE
-		SELECT COUNT(*) FROM teams_in_group
-		WHERE group_in_stage_id=_group_in_stage_id
-		AND team_id=_team1_id OR team_id=_team2_id
-		INTO count_teams;
-	END IF;
-
-	RETURN count_teams=2;
-END
-$$ LANGUAGE PLPGSQL;
-
-ALTER TABLE ONLY matches
-	ADD CONSTRAINT check_matches_right_group CHECK (check_group_in_match(tour_id,group_in_stage_id));
-
-ALTER TABLE ONLY matches
-	ADD CONSTRAINT check_matches_right_teams CHECK (check_teams_in_match(team1_id,team2_id,tour_id,group_in_stage_id));

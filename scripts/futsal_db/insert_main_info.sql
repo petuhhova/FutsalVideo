@@ -35,22 +35,23 @@ INSERT INTO competition_params(competition_in_season_id)
 	
 SELECT * FROM competition_in_season JOIN season USING (season_id) JOIN competition USING(competition_id);
 
+TRUNCATE stage RESTART IDENTITY CASCADE;
 INSERT INTO stage(stage_number,stage_type,competition_in_season_id) VALUES
 	(1,'round',1),
-	(2,'play-off',1),
-	(1,'play-off',2),
-	(1,'play-off',3),
+	(2,'playoff',1),
+	(1,'playoff',2),
+	(1,'playoff',3),
 	(1,'round',4),
-	(2,'play-off',4),
-	(1,'play-off',5),
-	(1,'play-off',6);
+	(2,'playoff',4),
+	(1,'playoff',5),
+	(1,'playoff',6);
 	
 INSERT INTO round_stage_params(stage_id,rounds_count) VALUES
 	(1,2),
 	(5,2);
 
-TRUNCATE play_off_stage_params;
-INSERT INTO play_off_stage_params(stage_id,rounds_count,is_third_place_matches) VALUES
+TRUNCATE playoff_stage_params;
+INSERT INTO playoff_stage_params(stage_id,rounds_count,is_third_place_matches) VALUES
 	(2,5,FALSE),
 	(3,8,FALSE),
 	(4,2,FALSE),
@@ -60,7 +61,7 @@ INSERT INTO play_off_stage_params(stage_id,rounds_count,is_third_place_matches) 
 
 SELECT country_name, competition_name,gender,concat(start_year,'/',end_year) as season,stage_type as stage FROM stage
 LEFT JOIN round_stage_params USING (stage_id)
-LEFT JOIN play_off_stage_params USING (stage_id)
+LEFT JOIN playoff_stage_params USING (stage_id)
 JOIN competition_in_season USING (competition_in_season_id)
 JOIN competition USING (competition_id)
 JOIN season USING (season_id)
